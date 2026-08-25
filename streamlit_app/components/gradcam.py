@@ -1,82 +1,146 @@
 from pathlib import Path
+
+import cv2
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-import matplotlib.cm as cm
+
+# ----------------------------------------------------
+# Configuration
+# ----------------------------------------------------
 
 ROOT = Path(__file__).resolve().parents[2]
-
 MODEL_PATH = ROOT / "weights" / "densenet121_tb_best.keras"
-IMG_SIZE = 224
+
+IMG_SIZE = (224, 224)
+
+# ----------------------------------------------------
+# Load model once
+# ----------------------------------------------------
 
 model = tf.keras.models.load_model(str(MODEL_PATH), compile=False)
 
-# DenseNet backbone
+# Force build
+_ = model(tf.zeros((1, 224, 224, 3), dtype=tf.float32), training=False)
+
 backbone = model.get_layer("densenet121")
+gap = model.layers[2]
+dropout = model.layers[3]
+classifier = model.layers[4]
 
-LAST_CONV = "conv5_block16_concat"
+# ----------------------------------------------------
+# Rebuild graph correctly (Keras 3 fix)
+# ----------------------------------------------------
 
-# Backbone model (input -> last conv + backbone output)
-backbone_model = tf.keras.Model(
-    inputs=backbone.input,
-    outputs=[
-        backbone.get_layer(LAST_CONV).output,
-        backbone.output,
-    ],
+inputs = model.input
+
+features = backbone(inputs, training=False)
+x = gap(features)
+x = dropout(x, training=False)
+outputs = classifier(x)
+
+grad_model = tf.keras.Model(
+    inputs=inputs,
+    outputs=[features, outputs],
 )
 
-# Classifier head (everything after backbone)
-head_layers = model.layers[model.layers.index(backbone) + 1 :]
+# ----------------------------------------------------
+# Lung mask helper
+# ----------------------------------------------------
 
+def _prepare_mask(mask, w, h):
 
-def generate_gradcam(image):
+    if mask is None:
+        return None
 
-    original = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+    if isinstance(mask, Image.Image):
+        mask = np.array(mask.convert("L"))
+    else:
+        mask = np.asarray(mask)
 
-    img = np.asarray(original, dtype=np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)
+    if mask.ndim == 3:
+        mask = cv2.cvtColor(mask.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+
+    mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    return (mask > 127).astype(np.float32)
+
+# ----------------------------------------------------
+# Grad-CAM
+# ----------------------------------------------------
+
+def generate_gradcam(image, lung_mask=None):
+
+    rgb = image.convert("RGB")
+    original = np.array(rgb)
+
+    h, w = original.shape[:2]
+
+    x = rgb.resize(IMG_SIZE)
+    x = np.array(x, dtype=np.float32) / 255.0
+    x = np.expand_dims(x, axis=0)
+    x = tf.convert_to_tensor(x)
 
     with tf.GradientTape() as tape:
 
-        last_conv, x = backbone_model(img)
+        conv_output, preds = grad_model(x, training=False)
 
-        for layer in head_layers:
-            x = layer(x)
+        score = preds[:, 0]
 
-        preds = x
+    grads = tape.gradient(score, conv_output)
 
-        class_idx = tf.argmax(preds[0])
+    if grads is None:
+        raise RuntimeError("Grad-CAM gradients are None.")
 
-        loss = preds[:, class_idx]
+    weights = tf.reduce_mean(grads, axis=(1, 2))
 
-    grads = tape.gradient(loss, last_conv)
+    cam = tf.reduce_sum(
+        conv_output * weights[:, None, None, :],
+        axis=-1,
+    )[0]
 
-    pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+    cam = tf.maximum(cam, 0)
 
-    last_conv = last_conv[0]
+    cam = cam.numpy().astype(np.float32)
 
-    heatmap = tf.reduce_sum(last_conv * pooled, axis=-1)
+    if cam.max() > 0:
+        cam /= cam.max()
 
-    heatmap = tf.maximum(heatmap, 0)
+    cam = np.squeeze(cam)
 
-    heatmap /= tf.reduce_max(heatmap) + 1e-8
+    cam = cv2.resize(
+        cam,
+        (w, h),
+        interpolation=cv2.INTER_LINEAR,
+    )
 
-    heatmap = heatmap.numpy()
+    mask = _prepare_mask(lung_mask, w, h)
 
-    # Resize heatmap
-    heatmap = tf.image.resize(
-        heatmap[..., np.newaxis],
-        (IMG_SIZE, IMG_SIZE)
-    ).numpy()
+    if mask is not None:
 
-    heatmap = np.squeeze(heatmap)
+        cam *= mask
 
-    # Apply JET colormap
-    colored = cm.jet(heatmap)[..., :3]
-    colored = (colored * 255).astype(np.uint8)
+        if cam.max() > 0:
+            cam /= cam.max()
 
-    colored = Image.fromarray(colored)
+    heat = np.uint8(np.clip(cam * 255, 0, 255))
 
-    overlay = Image.blend(original, colored, alpha=0.45)
+    heat = cv2.applyColorMap(
+        heat,
+        cv2.COLORMAP_JET,
+    )
 
-    return overlay
+    heat = cv2.cvtColor(
+        heat,
+        cv2.COLOR_BGR2RGB,
+    )
+
+    overlay = cv2.addWeighted(
+        original,
+        0.60,
+        heat,
+        0.40,
+        0,
+    )
+
+    return Image.fromarray(overlay)

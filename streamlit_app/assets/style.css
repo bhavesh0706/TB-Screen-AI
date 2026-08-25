@@ -1,0 +1,234 @@
+/* ===========================
+   PulmoTB AI - Premium Theme
+=========================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html,
+body,
+[class*="css"] {
+    font-family: "Inter", sans-serif;
+}
+
+/* Background */
+
+.stApp {
+    background:
+        radial-gradient(circle at top left, #0b1f4a 0%, #030712 45%, #020617 100%);
+    color: #F8FAFC;
+}
+
+/* Main Container */
+
+.block-container {
+    max-width: 1280px;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* Remove default spacing */
+
+section.main>div {
+    gap: 0.8rem;
+}
+
+/* Hide Streamlit branding */
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    background: transparent;
+}
+
+/* HERO */
+
+.hero-card {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb, #3b82f6);
+    border-radius: 28px;
+    padding: 34px 40px;
+    color: white;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+        0 0 45px rgba(37, 99, 235, .35);
+}
+
+.hero-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: .25;
+}
+
+.hero-title {
+    position: relative;
+    font-size: 44px;
+    font-weight: 800;
+}
+
+.hero-sub {
+    position: relative;
+    margin-top: 8px;
+    font-size: 18px;
+    color: #dbeafe;
+}
+
+/* Progress */
+
+.progress-card {
+    background: rgba(10, 20, 45, .85);
+    border: 1px solid rgba(59, 130, 246, .18);
+    border-radius: 18px;
+    padding: 18px 24px;
+}
+
+/* Cards */
+
+.glass-card {
+    background: rgba(7, 21, 40, .82);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(59, 130, 246, .16);
+    border-radius: 22px;
+    padding: 20px;
+    transition: .25s ease;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    border-color: #2563EB;
+    box-shadow: 0 12px 30px rgba(37, 99, 235, .18);
+}
+
+/* Section */
+
+.section-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+/* Metric Cards */
+
+.metric-card {
+    background: linear-gradient(145deg, #081a37, #071528);
+    border: 1px solid rgba(59, 130, 246, .15);
+    border-radius: 18px;
+    text-align: center;
+    padding: 20px;
+}
+
+.metric-label {
+    color: #94A3B8;
+    font-size: 13px;
+}
+
+.metric-value {
+    font-size: 34px;
+    font-weight: 800;
+    margin-top: 8px;
+}
+
+/* Risk */
+
+.risk-high {
+    background: #3b1018;
+    border: 1px solid #7f1d1d;
+    color: #FCA5A5;
+}
+
+.risk-low {
+    background: #0f2d1b;
+    border: 1px solid #166534;
+    color: #86EFAC;
+}
+
+/* Image Cards */
+
+.image-card {
+    background: rgba(8, 20, 40, .9);
+    border: 1px solid rgba(59, 130, 246, .16);
+    border-radius: 18px;
+    padding: 14px;
+}
+
+.image-title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #CBD5E1;
+    margin-bottom: 10px;
+}
+
+/* Success */
+
+.success-box {
+    background: #0b2b22;
+    border: 1px solid #16A34A;
+    border-radius: 12px;
+    padding: 14px;
+    color: #4ADE80;
+}
+
+/* Clinical */
+
+.clinical-card {
+    background: linear-gradient(135deg, #1f2937, #111827);
+    border-left: 6px solid #DC2626;
+    border-radius: 18px;
+    padding: 22px;
+}
+
+/* Buttons */
+
+.stButton>button {
+    width: 100%;
+    height: 52px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #2563EB, #1D4ED8);
+    color: white;
+    font-weight: 600;
+}
+
+.stButton>button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, .35);
+}
+
+/* Download */
+
+.stDownloadButton>button {
+    width: 100%;
+    height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #2563EB, #1E40AF);
+    color: white;
+    font-weight: 700;
+}
+
+/* Inputs */
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox div[data-baseweb="select"] {
+    border-radius: 12px;
+    background: #111827;
+    border: 1px solid rgba(255, 255, 255, .08);
+}
+
+/* Reduce image spacing */
+
+[data-testid="stImage"] {
+    margin-top: 0;
+    margin-bottom: 0;
+}

@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 with open(ROOT / "configs" / "unet.yaml") as f:
     cfg = yaml.safe_load(f)
 
-IMAGE_DIR = ROOT / "data" / "raw" / "LungSegmentation704" / "image"
-MASK_DIR = ROOT / "data" / "raw" / "LungSegmentation704" / "mask"
+IMAGE_DIR = ROOT / "data" / "processed" / "LungSegmentation704" / "image"
+MASK_DIR = ROOT / "data" / "processed" / "LungSegmentation704" / "mask"
 
 WEIGHTS_DIR = ROOT / "weights"
 WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
