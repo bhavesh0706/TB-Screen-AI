@@ -4,7 +4,7 @@ from datetime import datetime
 from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -13,7 +13,12 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     Image,
+    ListFlowable,
+    ListItem,
+    HRFlowable,
 )
+
+from components.recommendation import get_patient_recommendation
 
 
 def pil_to_buffer(img: PILImage.Image):
@@ -36,7 +41,24 @@ def create_report(session_state):
     gradcam = session_state["gradcam_image"]
     yolo = session_state["detected_image"]
 
-    patient_id = session_state.get("patient_id", "0001")
+    # FIX: `.get(key, default)` only falls back when the key is missing,
+    # not when it's an empty string — use `or` so blank input falls back too.
+    patient_id = session_state.get("patient_id") or "0001"
+    patient_name = session_state.get("patient_name") or "Not provided"
+    patient_age = session_state.get("patient_age", "-")
+    patient_gender = session_state.get("patient_gender", "-")
+
+    tb_probability_pct = cls["tb_probability"] * 100
+
+    # Same rule-based engine the dashboard uses, so the PDF and the
+    # on-screen report always agree.
+    rec = get_patient_recommendation(
+        tb_probability=tb_probability_pct,
+        age=patient_age if isinstance(patient_age, int) else 30,
+        gender=patient_gender if isinstance(patient_gender, str) else "Male",
+    )
+
+    risk_color = colors.HexColor(rec["color"])
 
     pdf_buffer = BytesIO()
 
@@ -55,10 +77,25 @@ def create_report(session_state):
     title_style.alignment = TA_CENTER
     title_style.textColor = colors.HexColor("#0F172A")
 
+    subtitle_style = ParagraphStyle(
+        "Subtitle",
+        parent=styles["BodyText"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#475569"),
+        fontSize=11,
+    )
+
     heading = styles["Heading2"]
     heading.textColor = colors.HexColor("#1D4ED8")
 
     normal = styles["BodyText"]
+    normal.leading = 15
+
+    bullet_style = ParagraphStyle(
+        "Bullet",
+        parent=normal,
+        textColor=colors.HexColor("#1E293B"),
+    )
 
     story = []
 
@@ -66,9 +103,11 @@ def create_report(session_state):
     # Header
     # --------------------------------------------------
 
-    story.append(Paragraph("<b>AI TB Screening System</b>", title_style))
-    story.append(Paragraph("Chest X-ray Tuberculosis Screening Report", normal))
-    story.append(Spacer(1, 0.25 * inch))
+    story.append(Paragraph("<b>🫁 PulmoTB AI</b>", title_style))
+    story.append(Paragraph("AI-Assisted Chest X-ray Tuberculosis Screening Report", subtitle_style))
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#93C5FD")))
+    story.append(Spacer(1, 0.2 * inch))
 
     # --------------------------------------------------
     # Patient Info
@@ -79,6 +118,9 @@ def create_report(session_state):
     info = Table(
         [
             ["Patient ID", patient_id],
+            ["Patient Name", patient_name],
+            ["Age", str(patient_age)],
+            ["Gender", str(patient_gender)],
             ["Date", datetime.now().strftime("%d %B %Y")],
             ["Time", datetime.now().strftime("%I:%M %p")],
         ],
@@ -91,15 +133,17 @@ def create_report(session_state):
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#E5E7EB")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
             ]
         )
     )
 
     story.append(info)
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, 0.25 * inch))
 
     # --------------------------------------------------
-    # AI Summary
+    # AI Summary + Risk Badge
     # --------------------------------------------------
 
     story.append(Paragraph("<b>AI Screening Summary</b>", heading))
@@ -108,7 +152,8 @@ def create_report(session_state):
         [
             ["Prediction", cls["label"]],
             ["Confidence", f"{cls['confidence']*100:.2f}%"],
-            ["TB Probability", f"{cls['tb_probability']*100:.2f}%"],
+            ["TB Probability", f"{tb_probability_pct:.2f}%"],
+            ["Risk Level", rec["risk"]],
         ],
         colWidths=[2.2 * inch, 4.4 * inch],
     )
@@ -117,13 +162,43 @@ def create_report(session_state):
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DBEAFE")),
+                ("BACKGROUND", (0, 3), (-1, 3), colors.Color(
+                    risk_color.red, risk_color.green, risk_color.blue, alpha=0.15
+                )),
+                ("TEXTCOLOR", (1, 3), (1, 3), risk_color),
+                ("FONTNAME", (1, 3), (1, 3), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )
 
     story.append(summary)
+    story.append(Spacer(1, 0.1 * inch))
+    story.append(Paragraph(rec["summary"], normal))
+    story.append(Spacer(1, 0.25 * inch))
+
+    # --------------------------------------------------
+    # Recommended Next Steps
+    # --------------------------------------------------
+
+    story.append(Paragraph("<b>Recommended Next Steps</b>", heading))
+
+    step_items = [
+        ListItem(Paragraph(step, bullet_style), bulletColor=risk_color)
+        for step in rec["steps"]
+    ]
+
+    story.append(
+        ListFlowable(
+            step_items,
+            bulletType="bullet",
+            start="circle",
+            leftIndent=18,
+            bulletFontSize=8,
+        )
+    )
     story.append(Spacer(1, 0.25 * inch))
 
     # --------------------------------------------------
@@ -211,6 +286,7 @@ def create_report(session_state):
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DBEAFE")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )
@@ -222,6 +298,8 @@ def create_report(session_state):
     # Disclaimer
     # --------------------------------------------------
 
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#CBD5E1")))
+    story.append(Spacer(1, 0.15 * inch))
     story.append(Paragraph("<b>Screening Disclaimer</b>", heading))
 
     disclaimer = """
