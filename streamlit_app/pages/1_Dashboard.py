@@ -1,17 +1,16 @@
-import streamlit as st
 from PIL import Image
+import streamlit as st
 
 from components.classifier import predict_tb
-from components.segmenter import segment_lungs
-from components.gradcam import generate_gradcam
 from components.detector import detect_lesions
-from components.report_generator import create_report
+from components.gradcam import generate_gradcam
 from components.recommendation import get_patient_recommendation
+from components.report_generator import create_report
+from components.segmenter import segment_lungs
 
-# -------------------------------------------------
+# --------------------------------------------------
 # PAGE CONFIG
-# -------------------------------------------------
-
+# --------------------------------------------------
 st.set_page_config(
     page_title="PulmoTB AI",
     page_icon="🫁",
@@ -19,539 +18,235 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# -------------------------------------------------
-# CSS
-# -------------------------------------------------
+# --------------------------------------------------
+# SESSION STATE
+# --------------------------------------------------
+defaults = {
+    "uploaded_image": None,
+    "classification": None,
+    "segmented_image": None,
+    "gradcam_image": None,
+    "detected_image": None,
+    "lesion_found": False,
+    "detections": [],
+    "lesion_count": 0,
+}
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
+# --------------------------------------------------
+# GLOBAL CSS — compact RetinexAI theme
+# --------------------------------------------------
+# NOTE: every HTML string in this file is either one line or flush-left
+# with zero leading whitespace per line. Indented multi-line HTML inside
+# st.markdown() gets misread by Streamlit's markdown parser as a code
+# block (4+ leading spaces = code block), which is why raw tags were
+# printing as visible text in the previous version.
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
-html, body, [class*="css"]{
-    font-family: 'Inter', sans-serif;
-}
-
-.stApp{
-    background:
-        radial-gradient(circle at top left,#0B82D9 0%,#06285D 28%,#020B22 62%,#010611 100%);
-    color:white;
-}
-
-.block-container{
-    max-width:1200px;
-    padding-top:1rem;
-    padding-bottom:2rem;
-}
-
-header[data-testid="stHeader"]{
-    background:rgba(0,0,0,0);
-}
-
-#MainMenu,
-footer,
-[data-testid="stSidebar"]{
-    visibility:hidden;
-    display:none !important;
-}
-
-/* Hero Header */
-.hero-card{
-    background:linear-gradient(135deg,#0A1836 0%,#0F2D63 45%,#1E56D8 100%);
-    border:1px solid rgba(59,130,246,.25);
-    border-radius:26px;
-    padding:28px;
-    box-shadow:0 20px 45px rgba(0,0,0,.45);
-    margin-bottom:18px;
-}
-
-.hero-title{
-    font-size:38px;
-    font-weight:800;
-    color:white;
-    margin:0;
-}
-
-.hero-sub{
-    color:#BFD7FF;
-    font-size:16px;
-    margin-top:4px;
-}
-
-.status-pill{
-    display:inline-block;
-    padding:8px 16px;
-    border-radius:999px;
-    background:rgba(74,222,128,.12);
-    border:1px solid rgba(74,222,128,.35);
-    color:#4ADE80;
-    font-weight:700;
-    font-size:13px;
-}
-
-/* Section title bar (self-contained: opens AND closes in one call, no stray content) */
-.section-title-bar{
-    background:rgba(4,15,35,.72);
-    border:1px solid rgba(75,145,255,.16);
-    border-radius:22px;
-    padding:18px 22px;
-    margin:18px 0 14px 0;
-    backdrop-filter:blur(18px);
-    box-shadow:
-        0 0 25px rgba(40,110,255,.12),
-        inset 0 0 14px rgba(255,255,255,.02);
-}
-
-.section-title{
-    font-size:1.35rem;
-    font-weight:800;
-    color:white;
-}
-
-/* Glass Cards */
-.report-card{
-    background:rgba(7,19,38,.82);
-    border:1px solid rgba(46,105,255,.18);
-    border-radius:16px;
-    box-shadow:
-        0 0 18px rgba(46,105,255,.08),
-        inset 0 0 8px rgba(255,255,255,.02);
-}
-
-.report-card:hover{
-    border-color:#2E69FF;
-    box-shadow:
-        0 0 28px rgba(46,105,255,.18),
-        inset 0 0 12px rgba(255,255,255,.03);
-}
-
-/* Inputs */
-.stTextInput input,
-.stNumberInput input,
-.stSelectbox div[data-baseweb="select"] > div {
-    background: #0B1730 !important;
-    color: white !important;
-    border: 1px solid rgba(90,150,255,.20) !important;
-    border-radius: 14px !important;
-}
-
-.stNumberInput button {
-    background: #0B1730 !important;
-    color: #D6E6FF !important;
-    border: none !important;
-}
-
-.stNumberInput button:hover {
-    background: #13264A !important;
-    color: white !important;
-}
-
-.stNumberInput div[data-baseweb="input"] {
-    background: #0B1730 !important;
-    border-radius: 14px !important;
-}
-
-.stSelectbox div[data-baseweb="select"] * {
-    background: #0B1730 !important;
-    color: white !important;
-}
-
-.stSelectbox svg {
-    fill: #BFD7FF !important;
-}
-
-[data-testid="stFileUploader"] button {
-    background: #0B1730 !important;
-    color: white !important;
-    border: 1px solid rgba(90,150,255,.25) !important;
-    border-radius: 12px !important;
-}
-
-[data-testid="stFileUploader"] button:hover {
-    background: #13264A !important;
-}
-
-/* Upload Panel */
-.upload-card{
-    background:rgba(6,18,42,.72);
-    border:1px solid rgba(70,150,255,.18);
-    border-radius:18px;
-    padding:20px;
-    height:100%;
-    backdrop-filter:blur(12px);
-}
-
-.upload-title{
-    color:white;
-    font-size:1.2rem;
-    font-weight:800;
-    margin-bottom:16px;
-}
-
-.upload-info{
-    background:#0A1835;
-    border:1px solid rgba(80,150,255,.18);
-    border-radius:12px;
-    padding:10px 14px;
-    color:#BFD8FF;
-    font-size:.8rem;
-    margin-top:12px;
-}
-
-.success-strip{
-    background:linear-gradient(90deg,#083D2E,#0A5B42);
-    border:1px solid #18A16C;
-    color:#68F3A8;
-    border-radius:12px;
-    padding:10px 14px;
-    font-size:.85rem;
-    font-weight:600;
-    margin-top:12px;
-}
-
-/* Image Cards */
-.img-card{
-    background:rgba(10,22,50,.92);
-    border:1px solid rgba(59,130,246,.18);
-    border-radius:16px;
-    padding:10px 14px;
-    margin-bottom:8px;
-    transition:.25s;
-}
-
-.img-card:hover{
-    transform:translateY(-2px);
-    border-color:#2E69FF;
-}
-
-.img-title{
-    color:white;
-    font-size:13px;
-    font-weight:700;
-}
-
-[data-testid="stImage"] img{
-    border-radius:14px !important;
-    max-height:260px !important;
-    width:auto !important;
-    max-width:100% !important;
-    object-fit:contain !important;
-    background:#090D16;
-}
-
-[data-testid="stFileUploaderDropzone"]{
-    background:#111827;
-    border:2px dashed rgba(90,150,255,.28);
-    border-radius:18px;
-    padding:24px;
-    min-height:160px;
-}
-
-/* Download Button */
-.stDownloadButton button{
-    width:100%;
-    border-radius:14px;
-    border:none;
-    color:white;
-    font-weight:700;
-    background:linear-gradient(90deg,#2563EB,#3B82F6);
-    box-shadow:0 10px 24px rgba(37,99,235,.35);
-    transition:.2s;
-    height:50px;
-}
-
-.stDownloadButton button:hover{
-    transform:translateY(-2px);
-}
+html, body, [class*="css"]{font-family:'Inter',sans-serif;}
+.stApp{background:radial-gradient(circle at top left,#1489E7 0%,#0B4D99 22%,#031C4C 55%,#010817 100%);color:white;}
+.block-container{max-width:1520px;padding-top:0.6rem;padding-bottom:1rem;padding-left:2rem;padding-right:2rem;}
+header[data-testid="stHeader"]{background:transparent;height:2.2rem;}
+#MainMenu,footer,[data-testid="stSidebar"]{display:none !important;}
+.hero-card{background:linear-gradient(135deg,#08132D,#0F2C63,#2554CC);border:1px solid rgba(72,138,255,.22);border-radius:16px;padding:12px 18px;box-shadow:0 10px 24px rgba(0,0,0,.35);margin-bottom:10px;}
+.hero-title{font-size:22px;font-weight:800;color:white;margin:0;}
+.hero-sub{color:#BFD8FF;font-size:12px;margin-top:2px;}
+.status-pill{padding:5px 12px;border-radius:999px;background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.4);color:#4ADE80;font-size:11px;font-weight:700;white-space:nowrap;}
+.section-title-bar{background:rgba(4,14,34,.78);border:1px solid rgba(72,138,255,.14);border-radius:12px;padding:8px 16px;margin:12px 0 8px;}
+.section-title{font-size:0.95rem;font-weight:800;letter-spacing:.01em;}
+.report-card{background:rgba(7,19,40,.84);border:1px solid rgba(59,130,246,.18);border-radius:12px;padding:12px 14px;}
+.card-label{color:#8EA8CF;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.card-value-lg{font-size:20px;font-weight:800;color:white;margin-top:4px;}
+.card-value-md{font-size:16px;font-weight:800;color:white;margin-top:3px;}
+.card-note{color:#9FB5D9;font-size:11px;margin-top:3px;}
+.risk-pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:700;margin-top:4px;}
+.prob-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+.prob-label{width:78px;font-size:11px;color:#BFD8FF;flex-shrink:0;}
+.prob-track{flex:1;height:10px;border-radius:6px;background:#0E1D3D;overflow:hidden;}
+.prob-fill{height:100%;border-radius:6px;}
+.prob-pct{width:44px;text-align:right;font-size:11px;font-weight:700;color:white;flex-shrink:0;}
+.subcard{flex:1;background:#08152B;border:1px solid rgba(59,130,246,.16);border-radius:10px;padding:8px 10px;}
+.subcard-label{color:#8EA8CF;font-size:10px;}
+.subcard-value{color:white;font-size:14px;font-weight:800;margin-top:2px;}
+.step-row{display:flex;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid rgba(90,150,255,.10);}
+.step-row:last-child{border-bottom:none;}
+.step-icon{width:24px;height:24px;min-width:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;}
+.step-text{color:white;font-size:12px;font-weight:600;line-height:1.3;}
+.stTextInput input,.stNumberInput input,.stSelectbox div[data-baseweb="select"]>div{background:#08162F !important;color:white !important;border:1px solid rgba(59,130,246,.20) !important;border-radius:10px !important;height:2.2rem !important;}
+.stNumberInput div[data-baseweb="input"]{background:#08162F !important;border-radius:10px !important;}
+.stNumberInput button{background:#08162F !important;color:white !important;border:none !important;}
+.stSelectbox div[data-baseweb="select"] *{background:#08162F !important;color:white !important;}
+.stSelectbox svg{fill:#BFD8FF !important;}
+label{font-size:12px !important;}
+[data-testid="stFileUploaderDropzone"]{background:#0B1835;border:2px dashed rgba(59,130,246,.28);border-radius:12px;min-height:90px;padding:6px;}
+[data-testid="stFileUploader"] button{background:#08162F !important;color:white !important;border-radius:8px !important;border:1px solid rgba(59,130,246,.25) !important;padding:2px 10px !important;}
+[data-testid="stFileUploader"] section{padding:6px !important;}
+[data-testid="stFileUploader"] small{font-size:10px !important;}
+[data-testid="stImage"] img{border-radius:10px !important;max-height:180px !important;width:auto !important;max-width:100% !important;object-fit:contain !important;background:#090D18;margin:0 auto;display:block;}
+.img-label{font-size:12px;font-weight:700;color:white;margin-bottom:6px;}
+[data-testid="stExpander"]{background:rgba(7,19,40,.6);border:1px solid rgba(59,130,246,.15);border-radius:10px;}
+.stDownloadButton button{width:100%;height:42px;border:none;border-radius:10px;font-weight:700;font-size:13px;color:white;background:linear-gradient(90deg,#2563EB,#3B82F6);box-shadow:0 8px 18px rgba(37,99,235,.3);}
+div[data-testid="stVerticalBlock"] > div{gap:0.35rem;}
+hr{margin:0.4rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------
-# 1. HERO
-# -------------------------------------------------
+# --------------------------------------------------
+# HERO
+# --------------------------------------------------
+st.markdown('<div class="hero-card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;"><div><div class="hero-title">🫁 PulmoTB AI</div><div class="hero-sub">AI-Assisted Pulmonary Tuberculosis Screening Platform</div></div><div class="status-pill">● System Ready</div></div></div>', unsafe_allow_html=True)
 
-st.markdown("""
-<div class="hero-card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;">
-        <div>
-            <div class="hero-title">🫁 PulmoTB AI</div>
-            <div class="hero-sub">AI-Assisted Pulmonary Tuberculosis Screening Platform</div>
-        </div>
-        <div class="status-pill">● System Ready</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# 2. PATIENT INFORMATION
-# -------------------------------------------------
-
-st.markdown(
-    '<div class="section-title-bar"><div class="section-title">Patient Information</div></div>',
-    unsafe_allow_html=True,
-)
+# --------------------------------------------------
+# PATIENT INFORMATION
+# --------------------------------------------------
+st.markdown('<div class="section-title-bar"><div class="section-title">Patient Information</div></div>', unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
-
 with c1:
-    patient_id = st.text_input("Patient ID", max_chars=4, placeholder="0001")
+    patient_id = st.text_input("Patient ID", placeholder="0001", max_chars=4)
     if patient_id and not patient_id.isdigit():
         st.error("Patient ID must contain only 4 digits.")
         st.stop()
-
 with c2:
     patient_name = st.text_input("Patient Name", placeholder="Enter name")
 with c3:
-    patient_age = st.number_input("Age", 1, 120, 30)
+    patient_age = st.number_input("Age", min_value=1, max_value=120, value=30)
 with c4:
     patient_gender = st.selectbox("Gender", ["Male", "Female", "Other"])
 
-# -------------------------------------------------
-# 3. CHEST X-RAY ACQUISITION  (+ Grad-CAM alongside the original)
-# -------------------------------------------------
+# --------------------------------------------------
+# CHEST X-RAY ACQUISITION
+# --------------------------------------------------
+st.markdown('<div class="section-title-bar"><div class="section-title">Chest X-ray Acquisition</div></div>', unsafe_allow_html=True)
 
-st.markdown(
-    '<div class="section-title-bar"><div class="section-title">Chest X-ray Acquisition</div></div>',
-    unsafe_allow_html=True,
-)
-
-left, right = st.columns([1.05, 1.35], gap="large")
-
-with left:
-    st.markdown('<div class="upload-card">', unsafe_allow_html=True)
-    st.markdown('<div class="upload-title">Upload Chest Radiograph</div>', unsafe_allow_html=True)
-
-    uploaded_file = st.file_uploader(
-        "Upload PNG / JPG / JPEG",
-        type=["png", "jpg", "jpeg"],
-        label_visibility="collapsed",
-    )
-
-    st.markdown(
-        '<div class="upload-info"><b>Formats:</b> PNG · JPG · JPEG <br>'
-        '<b>Minimum Resolution:</b> 512×512</div>',
-        unsafe_allow_html=True,
-    )
-
+up_col, info_col = st.columns([1.4, 3], gap="medium")
+with up_col:
+    uploaded_file = st.file_uploader("Upload chest X-ray", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+with info_col:
     if uploaded_file:
-        st.markdown('<div class="success-strip">✓ Radiograph processed successfully</div>', unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-image = None
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-
-with right:
-    if image is not None:
-        with st.spinner("Executing screening & localization models..."):
-            classification = predict_tb(image)
-            segmented = segment_lungs(image)
-
-            try:
-                gradcam_img = generate_gradcam(image, lung_mask=segmented)
-            except Exception as e:
-                st.warning(f"Grad-CAM unavailable: {e}")
-                gradcam_img = image
-
-            detected_img, lesion_found, detections = detect_lesions(image)
-
-        # persist for the report generator / PDF
-        st.session_state["patient_id"] = patient_id
-        st.session_state["patient_name"] = patient_name
-        st.session_state["patient_age"] = patient_age
-        st.session_state["patient_gender"] = patient_gender
-        st.session_state["uploaded_image"] = image
-        st.session_state["classification"] = classification
-        st.session_state["segmented_image"] = segmented
-        st.session_state["gradcam_image"] = gradcam_img
-        st.session_state["detected_image"] = detected_img
-        st.session_state["lesion_found"] = lesion_found
-        st.session_state["detections"] = detections
-        st.session_state["lesion_count"] = len(detections)
-
-        img_col1, img_col2 = st.columns(2, gap="medium")
-        with img_col1:
-            st.markdown(
-                '<div class="img-card"><div class="img-title">🩻 Original Radiograph</div></div>',
-                unsafe_allow_html=True,
-            )
-            st.image(image, use_container_width=True)
-        with img_col2:
-            st.markdown(
-                '<div class="img-card"><div class="img-title">🔥 Grad-CAM Heatmap</div></div>',
-                unsafe_allow_html=True,
-            )
-            st.image(gradcam_img, use_container_width=True)
+        st.markdown('<div style="margin-top:8px;background:linear-gradient(90deg,#063A2C,#0B6B4D);border:1px solid #19C37D;border-radius:8px;padding:6px 10px;color:#72F0B2;font-size:11px;font-weight:600;display:inline-block;">✓ Uploaded successfully</div>', unsafe_allow_html=True)
     else:
-        st.markdown(
-            '<div style="height:230px;display:flex;align-items:center;justify-content:center;'
-            'color:#8CA8D6;border:2px dashed rgba(90,150,255,.25);border-radius:18px;'
-            'background:rgba(6,18,42,.72);">Upload a chest X-ray to generate live Grad-CAM saliency.</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div style="margin-top:8px;color:#8EA8CF;font-size:11px;">PNG · JPG · JPEG, min 512×512 — upload to run the full screening pipeline.</div>', unsafe_allow_html=True)
 
 if uploaded_file is None:
     st.stop()
 
+image = Image.open(uploaded_file).convert("RGB")
+
+# --------------------------------------------------
+# AI PIPELINE EXECUTION
+# --------------------------------------------------
+with st.spinner("Running PulmoTB AI pipeline..."):
+    classification = predict_tb(image)
+    segmented_img = segment_lungs(image)
+
+    try:
+        gradcam_img = generate_gradcam(image, lung_mask=segmented_img)
+    except Exception as e:
+        st.warning(f"Grad-CAM unavailable: {e}")
+        gradcam_img = image
+
+    detected_img, lesion_found, detections = detect_lesions(image)
+
+st.session_state["patient_id"] = patient_id
+st.session_state["patient_name"] = patient_name
+st.session_state["patient_age"] = patient_age
+st.session_state["patient_gender"] = patient_gender
+st.session_state["uploaded_image"] = image
+st.session_state["classification"] = classification
+st.session_state["segmented_image"] = segmented_img
+st.session_state["gradcam_image"] = gradcam_img
+st.session_state["detected_image"] = detected_img
+st.session_state["lesion_found"] = lesion_found
+st.session_state["detections"] = detections
+st.session_state["lesion_count"] = len(detections)
+
 prediction = classification["label"]
 confidence = classification["confidence"] * 100
 tb_probability = classification["tb_probability"] * 100
+normal_probability = 100 - tb_probability
 
-rec = get_patient_recommendation(
-    tb_probability=tb_probability,
-    age=patient_age,
-    gender=patient_gender,
-)
+rec = get_patient_recommendation(tb_probability=tb_probability, age=patient_age, gender=patient_gender)
+prediction_label = "TB Positive" if prediction == "Tuberculosis" else "TB Negative"
 
-# -------------------------------------------------
-# 4. ANATOMICAL & LESION LOCALIZATION
-# -------------------------------------------------
+# --------------------------------------------------
+# IMAGING OVERVIEW — all 4 visuals in a single row
+# --------------------------------------------------
+st.markdown('<div class="section-title-bar"><div class="section-title">Imaging Overview</div></div>', unsafe_allow_html=True)
 
-st.markdown(
-    '<div class="section-title-bar"><div class="section-title">Anatomical & Lesion Localization</div></div>',
-    unsafe_allow_html=True,
-)
+img1, img2, img3, img4 = st.columns(4, gap="small")
+with img1:
+    st.markdown('<div class="img-label">🩻 Original</div>', unsafe_allow_html=True)
+    st.image(image, use_container_width=True)
+with img2:
+    st.markdown('<div class="img-label">🔥 Grad-CAM</div>', unsafe_allow_html=True)
+    st.image(gradcam_img, use_container_width=True)
+with img3:
+    st.markdown('<div class="img-label">🫁 Segmentation</div>', unsafe_allow_html=True)
+    st.image(segmented_img, use_container_width=True)
+with img4:
+    st.markdown('<div class="img-label">🎯 Lesion Localization</div>', unsafe_allow_html=True)
+    st.image(detected_img, use_container_width=True)
 
-loc1, loc2 = st.columns(2, gap="medium")
+lesion_status = "Detected" if lesion_found else "None"
+lesion_color = "#EF4444" if lesion_found else "#4ADE80"
+highest = max((d["confidence"] for d in detections), default=0) * 100
+st.markdown(f'<div style="margin-top:8px;font-size:11.5px;color:#BFD8FF;">Regions: <b style="color:white;">{len(detections)}</b> &nbsp;·&nbsp; Status: <b style="color:{lesion_color};">{lesion_status}</b> &nbsp;·&nbsp; Highest: <b style="color:white;">{highest:.1f}%</b></div>', unsafe_allow_html=True)
 
-with loc1:
-    st.markdown(
-        '<div class="img-card"><div class="img-title">🫁 Lung Segmentation (U-Net)</div></div>',
-        unsafe_allow_html=True,
-    )
-    st.image(st.session_state["segmented_image"], use_container_width=True)
+if detections:
+    with st.expander("View detected region coordinates"):
+        for region in detections:
+            x1, y1, x2, y2 = region["bbox"]
+            st.markdown(f'<div style="font-size:12px;color:#BFD8FF;padding:3px 0;">Region #{region["id"]} — bbox ({x1}, {y1}) → ({x2}, {y2}) — confidence {region["confidence"]*100:.1f}%</div>', unsafe_allow_html=True)
 
-with loc2:
-    st.markdown(
-        '<div class="img-card"><div class="img-title">🎯 Lesion Localization (YOLOv8)</div></div>',
-        unsafe_allow_html=True,
-    )
-    st.image(st.session_state["detected_image"], use_container_width=True)
-    if not st.session_state.get("lesion_found", True):
-        st.info("No localized lesions detected by YOLOv8.")
+# --------------------------------------------------
+# AI SCREENING REPORT (single consolidated block)
+# --------------------------------------------------
+st.markdown('<div class="section-title-bar"><div class="section-title">AI Screening Report</div></div>', unsafe_allow_html=True)
 
-# -------------------------------------------------
-# 5. AI SCREENING REPORT (single, RetinexAI style)
-# -------------------------------------------------
+rep_left, rep_right = st.columns([1, 1.1], gap="medium")
 
-st.markdown(
-    '<div class="section-title-bar"><div class="section-title">AI Screening Report</div></div>',
-    unsafe_allow_html=True,
-)
+with rep_left:
+    st.markdown(f'<div class="report-card"><div class="card-label">Predicted Condition</div><div class="card-value-lg">{prediction_label}</div><div class="card-note">AI-assisted screening output</div></div>', unsafe_allow_html=True)
 
-report_left, report_right = st.columns([1, 1.15], gap="large")
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        st.markdown(f'<div class="report-card" style="text-align:center;margin-top:8px;"><div class="card-label">Confidence</div><div class="card-value-md">{confidence:.1f}%</div></div>', unsafe_allow_html=True)
+    with mc2:
+        st.markdown(f'<div class="report-card" style="text-align:center;margin-top:8px;"><div class="card-label">TB Probability</div><div class="card-value-md">{tb_probability:.1f}%</div></div>', unsafe_allow_html=True)
 
-# ---------------- LEFT PANEL ----------------
+    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label">Class Probabilities</div><div class="prob-row"><div class="prob-label">Tuberculosis</div><div class="prob-track"><div class="prob-fill" style="width:{tb_probability:.1f}%;background:#3B82F6;"></div></div><div class="prob-pct">{tb_probability:.1f}%</div></div><div class="prob-row"><div class="prob-label">Normal</div><div class="prob-track"><div class="prob-fill" style="width:{normal_probability:.1f}%;background:#64748B;"></div></div><div class="prob-pct">{normal_probability:.1f}%</div></div></div>', unsafe_allow_html=True)
 
-with report_left:
+    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label">Risk Assessment</div><div class="risk-pill" style="background:{rec["color"]}22;border:1px solid {rec["color"]};color:{rec["color"]};">{rec["risk"]}</div><div style="margin-top:8px;color:#D6E6FF;font-size:12px;line-height:1.5;">{rec["summary"]}</div></div>', unsafe_allow_html=True)
 
-    condition_text = "TB Positive" if prediction == "Tuberculosis" else "TB Negative"
-    st.markdown(
-        '<div class="report-card" style="padding:22px;margin-bottom:16px;">'
-        '<div style="color:#8EA8CF;font-size:13px;font-weight:700;">Predicted Condition</div>'
-        f'<div style="font-size:30px;font-weight:800;color:white;margin-top:8px;">{condition_text}</div>'
-        '<div style="color:#9FB5D9;font-size:13px;margin-top:6px;">AI-assisted screening output</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label" style="margin-bottom:6px;">Patient Category</div><div style="display:flex;gap:10px;"><div class="subcard"><div class="subcard-label">Age Group</div><div class="subcard-value">{rec["age_group"]}</div></div><div class="subcard"><div class="subcard-label">Gender</div><div class="subcard-value">{rec["gender"]}</div></div></div></div>', unsafe_allow_html=True)
 
-    m_c1, m_c2 = st.columns(2)
-
-    with m_c1:
-        st.markdown(
-            '<div class="report-card" style="padding:18px;text-align:center;">'
-            '<div style="color:#8EA8CF;font-size:12px;">Confidence</div>'
-            f'<div style="font-size:24px;font-weight:800;color:white;margin-top:6px;">{confidence:.1f}%</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-    with m_c2:
-        st.markdown(
-            '<div class="report-card" style="padding:18px;text-align:center;">'
-            '<div style="color:#8EA8CF;font-size:12px;">TB Probability</div>'
-            f'<div style="font-size:24px;font-weight:800;color:white;margin-top:6px;">{tb_probability:.1f}%</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-    badge_style = (
-        "margin-top:10px;display:inline-block;padding:8px 18px;border-radius:999px;"
-        f"background:{rec['color']}22;border:1px solid {rec['color']};color:{rec['color']};font-weight:700;"
-    )
-    st.markdown(
-        '<div class="report-card" style="padding:20px;margin-top:16px;">'
-        '<div style="color:#8EA8CF;font-size:12px;">Risk Assessment</div>'
-        f'<div style="{badge_style}">{rec["risk"]}</div>'
-        f'<div style="margin-top:18px;color:#D6E6FF;line-height:1.7;">{rec["summary"]}</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="report-card" style="padding:20px;margin-top:16px;">'
-        '<div style="color:white;font-weight:700;font-size:17px;margin-bottom:14px;">Patient Category</div>'
-        '<div style="display:flex;gap:18px;">'
-            '<div style="flex:1;background:#08152B;border:1px solid rgba(59,130,246,.16);'
-            'border-radius:14px;padding:14px;">'
-                '<div style="color:#8EA8CF;font-size:12px;">Age Group</div>'
-                f'<div style="color:white;font-size:20px;font-weight:800;margin-top:4px;">{rec["age_group"]}</div>'
-            '</div>'
-            '<div style="flex:1;background:#08152B;border:1px solid rgba(59,130,246,.16);'
-            'border-radius:14px;padding:14px;">'
-                '<div style="color:#8EA8CF;font-size:12px;">Gender</div>'
-                f'<div style="color:white;font-size:20px;font-weight:800;margin-top:4px;">{rec["gender"]}</div>'
-            '</div>'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-# ---------------- RIGHT PANEL ----------------
-
-with report_right:
-
-    st.markdown(
-        '<div style="font-size:22px;font-weight:800;color:white;margin-bottom:14px;">'
-        'Recommended Next Steps</div>',
-        unsafe_allow_html=True,
-    )
+with rep_right:
+    st.markdown('<div style="font-size:14px;font-weight:800;color:white;margin-bottom:6px;">Recommended Next Steps</div>', unsafe_allow_html=True)
 
     icon_map = [
-        ("🚑", "#EF4444"),
-        ("🧪", "#8B5CF6"),
-        ("📄", "#2563EB"),
-        ("🩺", "#06B6D4"),
-        ("🫁", "#EAB308"),
-        ("🏥", "#10B981"),
-        ("👨‍⚕️", "#3B82F6"),
+        ("🚑", "#EF4444"), ("🧪", "#8B5CF6"), ("📄", "#2563EB"),
+        ("🩺", "#06B6D4"), ("🫁", "#EAB308"), ("🏥", "#10B981"), ("👨‍⚕️", "#3B82F6"),
     ]
-
     rows_html = ""
-    total = len(rec["steps"])
     for i, step in enumerate(rec["steps"]):
         icon, accent = icon_map[i % len(icon_map)]
-        is_last = i == total - 1
-        border = "" if is_last else "border-bottom:1px solid rgba(90,150,255,.10);"
-        rows_html += (
-            f'<div style="display:flex;gap:12px;align-items:center;padding:10px 4px;{border}">'
-                f'<div style="width:30px;height:30px;min-width:30px;border-radius:50%;background:{accent}22;'
-                f'display:flex;align-items:center;justify-content:center;font-size:14px;'
-                f'border:1px solid {accent};">{icon}</div>'
-                f'<div style="color:white;font-size:13.5px;font-weight:600;line-height:1.35;">{step}</div>'
-            '</div>'
-        )
+        rows_html += f'<div class="step-row"><div class="step-icon" style="background:{accent}22;border:1px solid {accent};">{icon}</div><div class="step-text">{step}</div></div>'
+    st.markdown(f'<div class="report-card" style="padding:4px 12px;">{rows_html}</div>', unsafe_allow_html=True)
 
-    st.markdown(
-        f'<div class="report-card" style="padding:6px 16px;">{rows_html}</div>',
-        unsafe_allow_html=True,
-    )
+# --------------------------------------------------
+# DOWNLOAD REPORT
+# --------------------------------------------------
+st.markdown('<div class="section-title-bar"><div class="section-title">Clinical Report</div></div>', unsafe_allow_html=True)
 
 pdf_bytes = create_report(st.session_state)
 
 st.download_button(
     "⬇ Download Official Clinical Screening Report (PDF)",
-    pdf_bytes,
+    data=pdf_bytes,
     file_name=f"PulmoTB_AI_Report_{patient_id or '0001'}.pdf",
     mime="application/pdf",
     use_container_width=True,
