@@ -1,18 +1,3 @@
-"""
-PulmoTB AI - Hospital-grade screening report generator.
-
-Public API (unchanged from the previous version so 1_Dashboard.py needs
-no changes):
-
-    create_report(session_state) -> bytes
-
-Structure mirrors the RetinexAI report.py reference: small, named
-"build_*" helpers that each return a flowable (or list of flowables),
-assembled in create_report(). Header/footer are drawn on the canvas
-directly (repeats on every page) so the body content flows and paginates
-naturally instead of being trapped inside one giant table.
-"""
-
 from io import BytesIO
 from datetime import datetime
 from html import escape
@@ -320,7 +305,7 @@ class NumberedCanvas(canvas_module.Canvas):
         self.setFillColor(colors.white)
         self.setFont("Helvetica", 7.5)
         self.drawRightString(PAGE_W - MARGIN, FOOTER_H / 2.0 - 3,
-                             f"Page {self._pageNumber} of {total_pages}")
+                           f"Page {self._pageNumber} of {total_pages}")
         self.restoreState()
 
 
@@ -398,10 +383,10 @@ def build_patient_and_study(patient_id, patient_name, patient_age, patient_gende
     return outer
 
 
-def build_ai_summary_cards(prediction_label, confidence_pct, tb_probability_pct, risk_label, risk_color_hex):
+def build_ai_summary_cards(prediction_label, tb_probability_pct, risk_label, risk_color_hex):
     gap = 8
-    n = 4
-    weights = [1.2, 0.9, 1.05, 1.25]
+    n = 3
+    weights = [1.2, 1.05, 1.25]
     total_weight = sum(weights)
     available = CONTENT_W - gap * (n - 1)
     widths = [available * w / total_weight for w in weights]
@@ -409,7 +394,6 @@ def build_ai_summary_cards(prediction_label, confidence_pct, tb_probability_pct,
     condition_color = RED if prediction_label == "Tuberculosis" else GREEN
     card_data = [
         ("Dx", condition_color, "PREDICTED CONDITION", prediction_label, "#0B2545"),
-        ("%", GREEN, "CONFIDENCE", f"{confidence_pct:.2f}%", "#0B2545"),
         ("TB", BLUE_ICON, "TB PROBABILITY", f"{tb_probability_pct:.2f}%", "#0B2545"),
         ("!", colors.HexColor(risk_color_hex), "RISK LEVEL", risk_label, "#0B2545"),
     ]
@@ -694,7 +678,6 @@ def create_report(session_state):
     patient_gender = session_state.get("patient_gender", "-")
 
     prediction_label = cls["label"]
-    confidence_pct = cls["confidence"] * 100
     raw_tb_probability_pct = cls["tb_probability"] * 100
 
     clinical_tb_probability_pct = compute_clinical_probability(
@@ -729,7 +712,7 @@ def create_report(session_state):
     story.append(Spacer(1, 0.14 * inch))
 
     story.append(build_section_heading("AI Screening Summary", "AI"))
-    story.append(build_ai_summary_cards(prediction_label, confidence_pct, clinical_tb_probability_pct, rec["risk"], rec["color"]))
+    story.append(build_ai_summary_cards(prediction_label, clinical_tb_probability_pct, rec["risk"], rec["color"]))
     story.append(Spacer(1, 0.08 * inch))
     story.append(build_alert_banner(rec["summary"], rec["color"]))
     story.append(Spacer(1, 0.16 * inch))

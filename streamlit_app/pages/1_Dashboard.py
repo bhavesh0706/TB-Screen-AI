@@ -1,4 +1,5 @@
 from PIL import Image
+import matplotlib.pyplot as plt
 import streamlit as st
 
 from components.classifier import predict_tb
@@ -38,11 +39,6 @@ for key, value in defaults.items():
 # --------------------------------------------------
 # GLOBAL CSS — compact RetinexAI theme
 # --------------------------------------------------
-# NOTE: every HTML string in this file is either one line or flush-left
-# with zero leading whitespace per line. Indented multi-line HTML inside
-# st.markdown() gets misread by Streamlit's markdown parser as a code
-# block (4+ leading spaces = code block), which is why raw tags were
-# printing as visible text in the previous version.
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -63,11 +59,6 @@ header[data-testid="stHeader"]{background:transparent;height:2.2rem;}
 .card-value-md{font-size:16px;font-weight:800;color:white;margin-top:3px;}
 .card-note{color:#9FB5D9;font-size:11px;margin-top:3px;}
 .risk-pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:700;margin-top:4px;}
-.prob-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
-.prob-label{width:78px;font-size:11px;color:#BFD8FF;flex-shrink:0;}
-.prob-track{flex:1;height:10px;border-radius:6px;background:#0E1D3D;overflow:hidden;}
-.prob-fill{height:100%;border-radius:6px;}
-.prob-pct{width:44px;text-align:right;font-size:11px;font-weight:700;color:white;flex-shrink:0;}
 .subcard{flex:1;background:#08152B;border:1px solid rgba(59,130,246,.16);border-radius:10px;padding:8px 10px;}
 .subcard-label{color:#8EA8CF;font-size:10px;}
 .subcard-value{color:white;font-size:14px;font-weight:800;margin-top:2px;}
@@ -85,12 +76,18 @@ label{font-size:12px !important;}
 [data-testid="stFileUploader"] button{background:#08162F !important;color:white !important;border-radius:8px !important;border:1px solid rgba(59,130,246,.25) !important;padding:2px 10px !important;}
 [data-testid="stFileUploader"] section{padding:6px !important;}
 [data-testid="stFileUploader"] small{font-size:10px !important;}
-[data-testid="stImage"] img{border-radius:10px !important;max-height:180px !important;width:auto !important;max-width:100% !important;object-fit:contain !important;background:#090D18;margin:0 auto;display:block;}
+.img-label ~ [data-testid="stImage"] img{border-radius:10px !important;max-height:180px !important;width:auto !important;max-width:100% !important;object-fit:contain !important;background:#090D18;margin:0 auto;display:block;}
 .img-label{font-size:12px;font-weight:700;color:white;margin-bottom:6px;}
 [data-testid="stExpander"]{background:rgba(7,19,40,.6);border:1px solid rgba(59,130,246,.15);border-radius:10px;}
 .stDownloadButton button{width:100%;height:42px;border:none;border-radius:10px;font-weight:700;font-size:13px;color:white;background:linear-gradient(90deg,#2563EB,#3B82F6);box-shadow:0 8px 18px rgba(37,99,235,.3);}
 div[data-testid="stVerticalBlock"] > div{gap:0.35rem;}
 hr{margin:0.4rem 0;}
+
+.report-columns-marker + div[data-testid="stHorizontalBlock"]{align-items:stretch;}
+.report-columns-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{display:flex;}
+.report-columns-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-testid="stVerticalBlock"]{width:100%;display:flex;flex-direction:column;}
+.report-columns-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-of-type div[data-testid="stVerticalBlock"] > div:last-child{flex:1;display:flex;}
+.report-columns-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-of-type div[data-testid="stVerticalBlock"] > div:last-child .report-card{height:100%;display:flex;flex-direction:column;justify-content:center;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -182,8 +179,37 @@ with img1:
     st.markdown('<div class="img-label">🩻 Original</div>', unsafe_allow_html=True)
     st.image(image, use_container_width=True)
 with img2:
-    st.markdown('<div class="img-label">🔥 Grad-CAM</div>', unsafe_allow_html=True)
-    st.image(gradcam_img, use_container_width=True)
+    st.markdown(
+        '<div class="img-label">🔥 Grad-CAM</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.image(
+        gradcam_img,
+        use_container_width=True,
+    )
+
+    st.markdown(
+        '''
+        <div style="
+            margin-top:6px;
+            padding:7px 10px;
+            border-radius:8px;
+            background:rgba(7,19,40,.75);
+            border:1px solid rgba(59,130,246,.16);
+            color:#BFD8FF;
+            font-size:9.5px;
+            line-height:1.45;
+        ">
+            <b style="color:white;">Grad-CAM Color Guide:</b>
+            <span style="color:#EF4444;"> ● Red</span> Highest attention
+            <span style="color:#F59E0B;"> ● Orange/Yellow</span> High attention
+            <span style="color:#22C55E;"> ● Green</span> Moderate attention
+            <span style="color:#6366F1;"> ● Blue/Purple</span> Low attention
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 with img3:
     st.markdown('<div class="img-label">🫁 Segmentation</div>', unsafe_allow_html=True)
     st.image(segmented_img, use_container_width=True)
@@ -203,39 +229,181 @@ if detections:
             st.markdown(f'<div style="font-size:12px;color:#BFD8FF;padding:3px 0;">Region #{region["id"]} — bbox ({x1}, {y1}) → ({x2}, {y2}) — confidence {region["confidence"]*100:.1f}%</div>', unsafe_allow_html=True)
 
 # --------------------------------------------------
-# AI SCREENING REPORT (single consolidated block)
+# AI SCREENING REPORT
 # --------------------------------------------------
-st.markdown('<div class="section-title-bar"><div class="section-title">AI Screening Report</div></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-title-bar"><div class="section-title">AI Screening Report</div></div>',
+    unsafe_allow_html=True,
+)
 
-rep_left, rep_right = st.columns([1, 1.1], gap="medium")
+st.markdown('<div class="report-columns-marker"></div>', unsafe_allow_html=True)
+rep_left, rep_right = st.columns([1, 1], gap="medium")
 
+# ==================================================
+# LEFT COLUMN
+# ==================================================
 with rep_left:
-    st.markdown(f'<div class="report-card"><div class="card-label">Predicted Condition</div><div class="card-value-lg">{prediction_label}</div><div class="card-note">AI-assisted screening output</div></div>', unsafe_allow_html=True)
 
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        st.markdown(f'<div class="report-card" style="text-align:center;margin-top:8px;"><div class="card-label">Confidence</div><div class="card-value-md">{confidence:.1f}%</div></div>', unsafe_allow_html=True)
-    with mc2:
-        st.markdown(f'<div class="report-card" style="text-align:center;margin-top:8px;"><div class="card-label">TB Probability</div><div class="card-value-md">{tb_probability:.1f}%</div></div>', unsafe_allow_html=True)
+    # ----------------------------------------------
+    # Predicted Condition
+    # ----------------------------------------------
+    st.markdown(
+        f'<div class="report-card">'
+        f'<div class="card-label">Predicted Condition</div>'
+        f'<div class="card-value-lg">{prediction_label}</div>'
+        f'<div class="card-note">AI-assisted screening output</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label">Class Probabilities</div><div class="prob-row"><div class="prob-label">Tuberculosis</div><div class="prob-track"><div class="prob-fill" style="width:{tb_probability:.1f}%;background:#3B82F6;"></div></div><div class="prob-pct">{tb_probability:.1f}%</div></div><div class="prob-row"><div class="prob-label">Normal</div><div class="prob-track"><div class="prob-fill" style="width:{normal_probability:.1f}%;background:#64748B;"></div></div><div class="prob-pct">{normal_probability:.1f}%</div></div></div>', unsafe_allow_html=True)
+    # ----------------------------------------------
+    # Class Probabilities — Transparent Dark-Themed Bar Chart
+    # ----------------------------------------------
+    st.markdown(
+        '<div class="report-card" style="margin-top:8px; margin-bottom:8px; padding-bottom:4px;">'
+        '<div class="card-label" style="margin-bottom:2px;">📊 Class Probabilities</div>',
+        unsafe_allow_html=True,
+    )
 
-    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label">Risk Assessment</div><div class="risk-pill" style="background:{rec["color"]}22;border:1px solid {rec["color"]};color:{rec["color"]};">{rec["risk"]}</div><div style="margin-top:8px;color:#D6E6FF;font-size:12px;line-height:1.5;">{rec["summary"]}</div></div>', unsafe_allow_html=True)
+    classes = ["Tuberculosis", "Normal"]
+    probabilities = [
+        tb_probability / 100,
+        normal_probability / 100,
+    ]
 
-    st.markdown(f'<div class="report-card" style="margin-top:8px;"><div class="card-label" style="margin-bottom:6px;">Patient Category</div><div style="display:flex;gap:10px;"><div class="subcard"><div class="subcard-label">Age Group</div><div class="subcard-value">{rec["age_group"]}</div></div><div class="subcard"><div class="subcard-label">Gender</div><div class="subcard-value">{rec["gender"]}</div></div></div></div>', unsafe_allow_html=True)
+    fig, ax = plt.subplots(figsize=(9.5, 3.6), facecolor='none')
+    ax.set_facecolor('none')
 
+    bars = ax.bar(
+        classes,
+        probabilities,
+        width=0.5,
+        color=['#3B82F6', '#64748B'],
+        edgecolor='none',
+        alpha=0.9
+    )
+    ax.margins(x=0.12)
+
+    ax.set_ylim(0, 1.0)
+    ax.set_ylabel("Probability", fontsize=10, color='#8EA8CF')
+    ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.set_yticklabels(["0%", "20%", "40%", "60%", "80%", "100%"], color='#8EA8CF', fontsize=9)
+
+    ax.tick_params(axis='x', colors='white', labelsize=11, pad=4)
+    ax.tick_params(axis='y', colors='#8EA8CF', labelsize=9)
+
+    for bar, value in zip(bars, probabilities):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            value + 0.03,
+            f"{value * 100:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            fontweight="bold",
+            color='white',
+        )
+
+    ax.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.15,
+        color='#8EA8CF',
+    )
+
+    ax.set_axisbelow(True)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color('#8EA8CF')
+    ax.spines["bottom"].set_color('#8EA8CF')
+    ax.spines["left"].set_alpha(0.3)
+    ax.spines["bottom"].set_alpha(0.3)
+
+    plt.subplots_adjust(top=0.93, bottom=0.14, left=0.09, right=0.98)
+
+    st.pyplot(
+        fig,
+        use_container_width=True,
+    )
+
+    plt.close(fig)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ----------------------------------------------
+    # Risk Assessment
+    # ----------------------------------------------
+    st.markdown(
+        f'<div class="report-card">'
+        f'<div class="card-label">Risk Assessment</div>'
+
+        f'<div class="risk-pill" '
+        f'style="background:{rec["color"]}22;'
+        f'border:1px solid {rec["color"]};'
+        f'color:{rec["color"]};">'
+        f'{rec["risk"]}'
+        f'</div>'
+
+        f'<div style="margin-top:8px;'
+        f'color:#D6E6FF;'
+        f'font-size:12px;'
+        f'line-height:1.5;">'
+        f'{rec["summary"]}'
+        f'</div>'
+
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+# ==================================================
+# RIGHT COLUMN
+# ==================================================
 with rep_right:
-    st.markdown('<div style="font-size:14px;font-weight:800;color:white;margin-bottom:6px;">Recommended Next Steps</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div style="font-size:14px;'
+        'font-weight:800;'
+        'color:white;'
+        'margin-bottom:6px;">'
+        'Recommended Next Steps'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     icon_map = [
-        ("🚑", "#EF4444"), ("🧪", "#8B5CF6"), ("📄", "#2563EB"),
-        ("🩺", "#06B6D4"), ("🫁", "#EAB308"), ("🏥", "#10B981"), ("👨‍⚕️", "#3B82F6"),
+        ("🚑", "#EF4444"),
+        ("🧪", "#8B5CF6"),
+        ("📄", "#2563EB"),
+        ("🩺", "#06B6D4"),
+        ("🫁", "#EAB308"),
+        ("🏥", "#10B981"),
+        ("👨‍⚕️", "#3B82F6"),
     ]
+
     rows_html = ""
+
     for i, step in enumerate(rec["steps"]):
+
         icon, accent = icon_map[i % len(icon_map)]
-        rows_html += f'<div class="step-row"><div class="step-icon" style="background:{accent}22;border:1px solid {accent};">{icon}</div><div class="step-text">{step}</div></div>'
-    st.markdown(f'<div class="report-card" style="padding:4px 12px;">{rows_html}</div>', unsafe_allow_html=True)
+
+        rows_html += (
+            f'<div class="step-row">'
+            f'<div class="step-icon" '
+            f'style="background:{accent}22;'
+            f'border:1px solid {accent};">'
+            f'{icon}'
+            f'</div>'
+            f'<div class="step-text">{step}</div>'
+            f'</div>'
+        )
+
+    st.markdown(
+        f'<div class="report-card" style="padding:4px 12px;">'
+        f'{rows_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # --------------------------------------------------
 # DOWNLOAD REPORT
